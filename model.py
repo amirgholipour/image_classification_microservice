@@ -4,7 +4,9 @@ from io import BytesIO
 import tensorflow as tf
 import tensorflow_hub as hub
 import numpy as np
-from PIL import Image
+from PIL import Image,ImageOps
+import matplotlib.pyplot as plt
+import cv2
 
 model_handle = "https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet1k_s/classification/2"
 def preprocess_image(image):
@@ -57,6 +59,105 @@ def classify_image(model, image):
     logits = model(image)
     probabilities = tf.nn.softmax(logits)
     return probabilities.numpy()
+
+
+def visualize_segmentation(image, segmentation_map, alpha=0.7):
+    # Create a color map
+    cmap = plt.get_cmap("viridis")
+    colors = cmap(np.arange(cmap.N))
+
+    # Map the segmentation to RGB colors
+    colored_segmentation = colors[segmentation_map]
+
+    # Blend the original image with the colored segmentation
+    merged_image = cv2.addWeighted(image / 255.0, alpha, colored_segmentation[:, :, :3], 1 - alpha, 0)
+
+    plt.figure(figsize=(10, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.imshow(image)
+    plt.title("Original Image")
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(merged_image)
+    plt.title("Merged Segmented Image")
+
+    plt.show()
+    return merged_image
+
+# # Visualize the segmentation results
+# merged_image = visualize_segmentation(image, segmentation_map)
+
+# def segment_image(image):
+#     image_tensor = tf.image.resize(tf.expand_dims(tf.keras.preprocessing.image.img_to_array(image), 0), (513, 513))
+#     segmentation_map = tf.argmax(seg_model(image_tensor), axis=-1)[0].numpy()
+
+#     segmented_image = Image.fromarray((segmentation_map* 255).astype(np.uint8), "P")
+#     segmented_image.putpalette([
+#         0, 0, 0,       # Black for the background
+#         255, 0, 0,     # Red for the segmented object
+#     ])
+#     segmented_image = segmented_image.convert("RGBA")
+#     pixels = segmented_image.load()
+
+#     for i in range(segmented_image.size[0]):
+#         for j in range(segmented_image.size[1]):
+#             if pixels[i, j] == 0:
+#                 pixels[i, j] = (0, 0, 0, 0)
+
+#     buffer = BytesIO()
+#     segmented_image.save(buffer, format="PNG")
+#     buffer.seek(0)
+#     # mask = Image.fromarray(segmented_image)
+
+#     # # Apply the mask on the original image
+#     # masked_image = Image.composite(image, ImageOps.colorize(mask, "#000", "#FFF"), mask)
+
+#     # # Save the masked image as PNG
+#     # buffer = BytesIO()
+#     # masked_image.save(buffer, format="PNG")
+#     # buffer.seek(0)
+
+#     return buffer
+#segmented_image is in "P" mode (palette-based image) and ImageOps.colorize expects an "L" mode (grayscale) image.
+# model_url = "https://tfhub.dev/tensorflow/mask_rcnn/inception_resnet_v2_1024x1024/1"
+# mask_rcnn_model = hub.load(model_url)
+seg_model = hub.load('https://tfhub.dev/google/HRNet/coco-hrnetv2-w48/1')
+
+def segment_image(image):
+    # Convert the PIL image to a tensor
+    input_size = (512, 512)
+
+    image_tensor = tf.convert_to_tensor(image.astype(np.uint8))
+    image_tensor = tf.expand_dims(image_tensor, 0)
+    image_tensor = tf.image.resize(image_tensor, input_size)
+    image_tensor = tf.cast(image_tensor, tf.float32)
+
+    # # Run inference on the preprocessed image
+    # image = tf.cast([image], tf.float32)/255.0
+
+    # input_tensor = tf.expand_dims(image, 0) / 255.0
+    output_tensor = seg_model(image_tensor)
+
+
+    # Extract the segmentation map and convert it to a numpy array
+    segmentation_map = tf.argmax(output_tensor, axis=-1)
+    segmentation_map = segmentation_map[0].numpy()
+    # image = np.array(image)
+    image = cv2.resize(image, (segmentation_map.shape[1], segmentation_map.shape[0]))
+    masked_image = visualize_segmentation(image, segmentation_map)
+
+    masked_image = Image.fromarray(np.uint8(masked_image*255))
+    # Save the masked image as PNG
+    buffer = BytesIO()
+    masked_image.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    return buffer
+
+
+
+
 
 
 

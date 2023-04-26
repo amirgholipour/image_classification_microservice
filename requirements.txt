@@ -4,3 +4,5 @@ tensorflow-hub==0.13.0
 Pillow==9.5.0
 requests
 flask_cors
+matplotlib
+opencv-python
